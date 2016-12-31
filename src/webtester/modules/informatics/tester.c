@@ -30,6 +30,8 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "saferun.h"
+
 /* MAX count of tests */
 #define MAX_TESTS      1024
 #define MAX_ERRCODE    2
@@ -42,34 +44,6 @@
 /****
  * Macroses
  */
-
-/* Crash in testing loop */
-#define LOOPCRASH \
-  (*__points)=0; \
-  strcpy (__errors, "CR"); \
-  CR=TRUE; \
-  unlink (full_input); \
-  unlink (full_output); \
-  goto __done_;
-
-/* Push error of current test */
-#define ERR(__err, __s) \
-  { \
-    __err=TRUE; \
-    strcpy (cur_err_str, __s); \
-    push_string (__s, " ", tests_res_pchar); \
-    /* If rules are ACM we needn't run solution in next tests */ \
-    if (acm) { \
-      unlink (full_input); \
-      unlink (full_output); \
-      LOG_TEST; \
-      goto __done_; \
-    } \
-  }
-
-/* Log result of currebt test */
-#define LOG_TEST \
-  TASK_LOG (*__self, "  Test #%d: %s\n", i+1, cur_err_str);
 
 /* Check module's active in testing loop */
 #define LOOP_CHECK_ACTIVE \
@@ -145,7 +119,7 @@ static char log_banner[] = "\
  */
 
 static DWORD checker_memory_limit = INFORMATICS_CHECKER_RSS_LIMIT;
-static DWORD checker_time_limit = INFORMATICS_CHECKER_TIME_LIMIT*USEC_COUNT;
+static DWORD checker_time_limit = INFORMATICS_CHECKER_TIME_LIMIT*MSEC_COUNT;
 static GThreadPool *pool = NULL;
 static GMutex *active = NULL;
 static long max_threads = INFORMATICS_MAX_THREADS;
@@ -395,9 +369,7 @@ run_compiler (wt_task_t *__self, const char *__cmd,
               assarr_t *__params)
 {
   DWORD compiler_ml, compiler_tl, common_compiler_ml, common_compiler_tl;
-  run_process_info_t *proc;
-  BOOL result = TRUE;
-
+  
   /* Get compiler's limits */
   common_compiler_ml = COMPILER_SAFE_COMMON_INT_KEY ("Limits/RSS",
                                                INFORMATICS_COMPILER_RSS_LIMIT);
@@ -407,53 +379,56 @@ run_compiler (wt_task_t *__self, const char *__cmd,
   compiler_ml = COMPILER_SAFE_INT_KEY (TASK_COMPILER_ID (*__self),
                                        "Limits/RSS", common_compiler_ml);
   compiler_tl = COMPILER_SAFE_FLOAT_KEY (TASK_COMPILER_ID (*__self),
-                               "Limits/Time", common_compiler_tl) * USEC_COUNT;
+                               "Limits/Time", common_compiler_tl) * MSEC_COUNT;
 
   /* Create process */
   INF_DEBUG_LOG ("Task %ld. Executing compiler (cmd: %s)\n",
                  __self->sid, __cmd);
 
-  proc = run_create_process (__cmd, __cur_testing_dir,
-                             compiler_ml, compiler_tl);
-
-  run_execute_process (proc); /* Execute process and.. */
-  run_pwait (proc); /* ..wait finishing of process */
+  struct saferun_params_t params;
+  params.chroot = NULL;
+  params.dir = __cur_testing_dir;
+  params.memory_limit = compiler_ml;
+  params.time_limit = compiler_tl;
+  params.redirect_stdin = NULL;
+  params.redirect_stdout = "compiler.log";
+  params.redirect_stderr = "stdout";
+  
+  int res = saferun(__cmd, &params);
+  
   INF_DEBUG_LOG ("Task %ld. Finish executing compiler\n", __self->sid);
 
-  if (RUN_PROC_EXEC_ERROR (*proc))
-    {
-      INF_DEBUG_LOG ("Task %ld. Executing compiler failed: %s\n",
-                     __self->sid, RUN_PROC_ERROR_DESC (*proc));
+  if (res == -1) {
+      INF_DEBUG_LOG ("Task %ld. Executing compiler failed: ???\n",
+                     __self->sid);
       TASK_LOG (*__self, "\n--------\n"
-                         "Fatal error: error executing compiler: %s.\n"
-                         "Testing aborted.\n", RUN_PROC_ERROR_DESC (*proc));
-      REPORT (__params, "Error executing compiler: %s.", RUN_PROC_ERROR_DESC (*proc));
-      run_free_process (proc);
+                         "Fatal error: error executing compiler: ???.\n"
+                         "Testing aborted.\n");
+      REPORT (__params, "Error executing compiler: ???.");
       return -1;
-    }
+  }
 
-  /* Set output buffer from pipe */
-  if (RUN_PROC_PIPEBUF (*proc))
-    {
-      char *pchar = strdup (RUN_PROC_PIPEBUF (*proc));
-
-      if (strlen (pchar) > MAX_COMPILER_MSG_LEN)
-        {
-          pchar[MAX_COMPILER_MSG_LEN - 4] = 0;
-          strcat (pchar, "...");
-        }
-      assarr_set_value (__params, "COMPILER_MESSAGES", pchar);
-    }
-
-  /* Nonzero-coded exit - compilation error */
-  if (PROCESS_RUNTIME_ERROR (*proc))
-    {
-      result = FALSE;
-    }
-
-  run_free_process (proc);
-
-  return result;
+  char compiler_log_fname[1024];
+  snprintf(compiler_log_fname, 1024, "%s/compiler.log", __cur_testing_dir);
+  
+  char compiler_buf[MAX_COMPILER_MSG_LEN];
+  FILE *compiler_log = fopen(compiler_log_fname, "r");
+  size_t read_length = fread(compiler_buf, 1, MAX_COMPILER_MSG_LEN, compiler_log);
+  fclose(compiler_log);
+  
+  if (read_length >= MAX_COMPILER_MSG_LEN) {
+    compiler_buf[MAX_COMPILER_MSG_LEN - 4] = 0;
+    strcat (compiler_buf, "...");
+  } else {
+    compiler_buf[read_length] = 0;
+  }
+  
+  assarr_set_value (__params, "COMPILER_MESSAGES", strdup(compiler_buf));
+  
+  if (res == 0)
+      return TRUE;
+  else
+      return FALSE;
 }
 
 /**
@@ -528,10 +503,6 @@ compile_solution (wt_task_t *__self, const char *__cur_testing_dir,
   return post_compiling_check (__self, __cur_testing_dir,
                                __cur_data_dir, __params);
 }
-
-/****
- *
- */
 
 /**
  * Copy test to testing directory
@@ -666,6 +637,373 @@ need_store_checker_output (void)
   return result;
 }
 
+static char *
+make_run_solution_cmd(wt_task_t *__self, const char *__cur_data_dir,
+                   const char *__cur_testing_dir) {
+  /* Filename to execute */
+  char execfn[4096] = {0};
+
+    /* Get command for solution executing */
+  char *run_solution_cmd = COMPILER_SAFE_PCHAR_KEY (TASK_COMPILER_ID (*__self),
+                                                    "RunSolutionCmd", NULL);
+
+  if (run_solution_cmd && strcmp (run_solution_cmd, "")) {
+      /* We'll make some changes in this string, so we should */
+      /* close this string to make original stored in hive tree */
+      /* for correct freeing */
+      run_solution_cmd = strdup (run_solution_cmd);
+
+      /* String may be enlarged when parameters will be substitued  */
+      run_solution_cmd = realloc (run_solution_cmd, 65535);
+
+      replace_defaults (run_solution_cmd, __cur_testing_dir, __cur_data_dir);
+  }
+
+    /* Get executable file name */
+  INF_PCHAR_KEY (execfn, "FileToExec");
+  strcat (execfn, COMPILER_SAFE_PCHAR_KEY (TASK_COMPILER_ID (*__self),
+                                           "OutputExtension", ""));
+  if (run_solution_cmd) {
+      REPLACE_VAR (run_solution_cmd, "executable", execfn);
+  } else {
+      char RUN_SOLUTION_CMD_BUF[1024];
+      snprintf(RUN_SOLUTION_CMD_BUF, 1024, "./%s", execfn);
+      run_solution_cmd = strdup (RUN_SOLUTION_CMD_BUF);
+  }
+  
+  return run_solution_cmd;
+}
+
+static int task_get_tests(wt_task_t *__self, int *tests) {
+    /* Unpack tests' data */
+  char *tests_pchar = TASK_INPUT_PARAM (*__self, "TESTS"),
+          effective_tests[4096];
+
+  char **tests_pchar_arr = 0;
+
+  /*
+   * TODO: Need to strip dupicated spaces in source string with tests
+   */
+
+  trim (tests_pchar, effective_tests);
+  int tests_count = explode (effective_tests, " ", &tests_pchar_arr);
+
+  int i;
+  for (i = 0; i < tests_count; i++)
+    tests[i] = atoi (tests_pchar_arr[i]);
+
+  /* Free unwanted data */
+  free_explode_data (tests_pchar_arr);
+
+  return tests_count;
+}
+
+typedef struct testing_task_t {
+	wt_task_t *self;
+	int sid;
+	const char *cur_data_dir;
+	const char *cur_testing_dir;
+	char *run_solution_cmd;
+
+	int tests[MAX_TESTS];
+	int tests_count;
+	int bonus;
+
+	BOOL acm;
+
+	char *input_file;
+	char *output_file;
+
+	DWORD memory_limit;
+	DWORD time_limit;
+
+    char full_input[4096];
+	char full_output[4096];
+
+	BOOL use_chroot;
+} testing_task_t;
+
+
+int testing_run_solution(const testing_task_t *task) {
+	/* Execute solution */
+	INF_DEBUG_LOG("Task %ld. Executing solution (cmd: %s)\n", task->sid,
+			task->run_solution_cmd);
+
+	saferun_params_t srun_params;
+	if (use_chroot) {
+		srun_params.chroot = task->cur_testing_dir;
+		srun_params.dir = "/";
+	} else {
+		srun_params.chroot = NULL;
+		srun_params.dir = task->cur_testing_dir;
+	}
+	srun_params.memory_limit = task->memory_limit;
+	srun_params.time_limit = task->time_limit;
+	srun_params.redirect_stdin = task->input_file;
+	srun_params.redirect_stdout = "stdout.log";
+	srun_params.redirect_stderr = "stdout";
+
+	int result = saferun(task->run_solution_cmd, &srun_params);
+
+    INF_DEBUG_LOG ("Task %ld. Finish executing solution\n", task->sid);
+    return result;
+}
+
+testing_task_t testing_task_from_wt_task(wt_task_t *__self, const char *__cur_data_dir,
+        const char *__cur_testing_dir) {
+
+	testing_task_t task;
+	task.self = __self;
+	task.sid = __self->sid;
+	task.cur_data_dir = __cur_data_dir;
+	task.cur_testing_dir = __cur_testing_dir;
+
+	/* Tests */
+	task.tests_count = task_get_tests(__self, task.tests);
+
+	/* Bonus points (if all tests passed) */
+	task.bonus = atoi (TASK_INPUT_PARAM (*__self, "BONUS"));
+
+	/* I/O filenames  */
+	task.input_file = TASK_INPUT_PARAM (*__self, "INPUTFILE");
+	task.output_file = TASK_INPUT_PARAM (*__self, "OUTPUTFILE");
+
+    /* Full too */
+	snprintf (task.full_input, BUF_SIZE (task.full_input), "%s/%s",
+	            __cur_testing_dir, task.input_file);
+	snprintf (task.full_output, BUF_SIZE (task.full_output), "%s/%s",
+	            __cur_testing_dir, task.output_file);
+
+	/* ACM? */
+	task.acm = !strcmp (TASK_INPUT_PARAM (*__self, "ACM"), "TRUE");
+
+	/* Run solution command */
+	task.run_solution_cmd = make_run_solution_cmd(__self, __cur_data_dir, __cur_testing_dir);
+
+	/* Use chroot? */
+	int compiler_chroot = COMPILER_SAFE_INT_KEY (TASK_COMPILER_ID (*__self),
+	                                              "ChRoot", -1);
+	if (compiler_chroot >= 0)
+		task.use_chroot = compiler_chroot;
+	else
+		task.use_chroot = use_chroot;
+
+	/* Resource limits */
+	/* But why simple atof doesn't work? */
+	task.memory_limit = flexval_atolf (TASK_INPUT_PARAM (*__self,
+	                                             "MEMORYLIMIT")) * 1024; /* Kb */
+	task.time_limit = flexval_atolf (TASK_INPUT_PARAM (*__self,
+	                                        "TIMELIMIT")) * MSEC_COUNT; /* msecs */
+
+	/* Get corrections to apply when executing solution */
+	double time_corr, rss_corr;
+	char dummy[1024];
+	snprintf (dummy, BUF_SIZE (dummy), "ResourceCorrections/Compilers/%s/Time",
+	          TASK_COMPILER_ID (*__self));
+	INF_SAFE_FLOAT_KEY (time_corr, dummy, 0);
+
+	snprintf (dummy, BUF_SIZE (dummy), "ResourceCorrections/Compilers/%s/RSS",
+	          TASK_COMPILER_ID (*__self));
+	INF_SAFE_FLOAT_KEY (rss_corr, dummy, 0);
+
+    if (fabs (time_corr) > 1e-8 || fabs (rss_corr) > 1e-8) {
+	      INF_DEBUG_LOG ("Using per-compiler corrections: RSS: %lf, time: %lf\n",
+	                     rss_corr, time_corr);
+	}
+
+	/* Apply corrections */
+	task.time_limit += time_corr * MSEC_COUNT;
+	task.memory_limit += rss_corr;
+
+	return task;
+}
+
+static int testing_run_checker(const testing_task_t *task, const int i,
+		assarr_t *checker_outputs, assarr_t *__params) {
+  char checker_cmd[4096];
+  build_checker_cmd (task->self, task->cur_testing_dir, task->cur_data_dir,
+					 i + 1, task->tests_count, checker_cmd);
+
+  char checker_log[1024];
+  snprintf(checker_log, 1024, "%s/checker.log", task->cur_testing_dir);
+
+  /* Process's descriptor */
+  INF_DEBUG_LOG ("Task %ld. Executing checker (cmd: %s)\n",
+				 task->sid, checker_cmd);
+
+  saferun_params_t srun_params;
+  srun_params.chroot = NULL;
+  srun_params.dir = task->cur_data_dir;
+  srun_params.memory_limit = checker_memory_limit;
+  srun_params.time_limit = checker_time_limit;
+  srun_params.redirect_stdin = NULL;
+  srun_params.redirect_stdout = checker_log;
+  srun_params.redirect_stderr = "/dev/null";
+
+  int result = saferun(checker_cmd, &srun_params);
+
+  INF_DEBUG_LOG ("Task %ld. Finish executing checker\n",
+				 task->sid);
+
+  /* Error while trying to execute checker */
+  if (result == -1) {
+	  INF_DEBUG_LOG ("Task %ld. "
+					 "Fatal error during executing checker: ??\n",
+					 task->sid);
+
+	  TASK_LOG (*task->self, "\n--------\n"
+						 "Fatal error: error executing checker "
+						 "at test #%d: ??.\nTesting aborted.\n",
+				i + 1);
+
+	  REPORT (__params, "Error executing checker at test #%d: ??.",
+			  i + 1);
+
+	  return TESTING_SC;
+  }
+
+  /* Resource usage error while executing checker */
+  if (result == TESTING_ML || result == TESTING_TL) {
+	  INF_DEBUG_LOG ("Task %ld. "
+					 "Checker's resource usage error (%s)\n",
+					 task->sid, (result == TESTING_ML) ?
+									   ("Memory limit") :
+									   ("Time limit"));
+
+	  TASK_LOG (*task->self, "\n--------\n"
+						 "Fatal error: resource limit error while "
+						 "executing checker.\nTesting aborted.\n");
+	  REPORT (__params, "Resource limit exceeded while executing "
+						"checker at test #%d. ",
+			  i + 1);
+
+	  return TESTING_SC;
+  }
+
+  /* Checker finished by signal. */
+  if (!srun_params.exited) {
+	  TASK_LOG (*task->self, "\n--------\n"
+						 "Fatal error: Abnormal checker "
+						 "termination at test #%d. "
+						 "TERM signal: %d.\nTesting aborted.\n",
+				i + 1, WTERMSIG(srun_params.status));
+
+	  REPORT (__params, "Abnormal checker termination at test #%d. "
+						"TERM signal: %d.", i + 1, WTERMSIG(srun_params.status));
+
+	  return TESTING_SC;
+  }
+
+  INF_DEBUG_LOG ("Task %ld. "
+				 "Checker finished working with exit code %d\n",
+				 task->sid, srun_params.exit_code);
+
+
+  /* Store checker's output message */
+  if (checker_outputs) {
+	  char dummy[10];
+	  snprintf (dummy, BUF_SIZE (dummy), "%d", i);
+
+	  char checker_buf[1024];
+	  FILE *log = fopen(checker_log, "r");
+	  size_t read_length = fread(checker_buf, 1, BUF_SIZE(checker_buf) - 1, log);
+	  checker_buf[read_length] = 0;
+	  fclose(log);
+
+	  assarr_set_value (checker_outputs, dummy, strdup (checker_buf));
+  }
+
+  int res = TESTING_SC;
+  /* Overview checker's exit code */
+  switch (srun_params.exit_code) {
+	case _OK:
+	  res = TESTING_OK;
+	  break;
+	case _WA:
+	  res = TESTING_WA;
+	  break;
+	case _PE:
+	  res = TESTING_PE;
+	  break;
+  }
+
+  if (res == TESTING_SC) {
+	 /* Unknown checker's exit code */
+	 TASK_LOG (*task->self, "\n--------\nFatal error: checker exited "
+						 "with unknown code: %d.\nTesting aborted.\n",
+						 srun_params.exit_code);
+
+	 REPORT (__params, "Checker exited with unknown code: %d\n",
+						srun_params.exit_code);
+  }
+
+  return res;
+}
+
+static int testing_run_test(const testing_task_t *task, const int i,
+		                    assarr_t *outputs, assarr_t *checker_outputs, assarr_t *__params)
+{
+
+    /* Copy test file (input file) */
+    INF_DEBUG_LOG ("Task %ld. Copy test\n", task->sid);
+    if (!copy_test (i + 1, task->tests_count, task->cur_data_dir,
+                    task->cur_testing_dir, task->input_file)) {
+        TASK_LOG (*task->self, "\n--------\n"
+                           "Fatal error: error copying test file #%d.\n"
+                           "Testing aborted.\n", i + 1);
+        REPORT (__params, "Error copying test #%d.", i + 1);
+
+        return TESTING_SC;
+    }
+
+	/* Execute solution */
+	int res = testing_run_solution(task);
+
+	if (res == -1 || res == TESTING_SC || res == TESTING_SV) {
+        INF_DEBUG_LOG ("Task %ld. "
+                       "Some fatal error during executing solution\n",
+                       task->sid);
+
+        TASK_LOG (*task->self, "\n--------\n"
+                           "Fatal error: error executing solution "
+                           "at test #%d.\nTesting aborted.\n",
+                  i + 1);
+
+        REPORT (__params, "Error executing solution at test #%d.",
+                i + 1);
+
+        return TESTING_SC;
+    }
+
+    if (res != TESTING_OK)
+    	return res;
+
+    if (!fexists (task->full_output)) {
+		/* No output file. Presentation error. */
+		INF_DEBUG_LOG ("Task %ld. Output file not found after "
+				 "running solution.", task->sid);
+
+		return TESTING_PE;
+    }
+
+    if (outputs) {
+    	char output[max_output_store_size + 1];
+    	FILE *stream = fopen (task->full_output, "r");
+
+    	char test[10];
+		snprintf (test, BUF_SIZE (test), "%d", i);
+
+		if (stream) {
+			size_t len = fread (output, 1, max_output_store_size, stream);
+			output[len] = 0;
+			assarr_set_value (outputs, test, strdup (output));
+			fclose (stream);
+	    }
+	}
+
+    return testing_run_checker(task, i, checker_outputs, __params);
+}
+
 /*
  * Main stuff of testing
  *
@@ -680,458 +1018,93 @@ testing_main_loop (wt_task_t *__self, const char *__cur_data_dir,
                    const char *__cur_testing_dir, int *__points,
                    char *__errors, assarr_t *__params)
 {
-  int i;
-
   INF_DEBUG_LOG ("Task %ld. Enter testing mainloop stuff\n", __self->sid);
-
-  /* Bonus points (if all tests passed) */
-  int bonus = atoi (TASK_INPUT_PARAM (*__self, "BONUS"));
-
-  /* I/O filenames  */
-  /* Name of input file */
-  char *input_file = TASK_INPUT_PARAM (*__self, "INPUTFILE");
-  /* Name of output file  */
-  char *output_file = TASK_INPUT_PARAM (*__self, "OUTPUTFILE");
-
-  /* Resource limits */
-  /* But why simple atof doesn't work? */
-  DWORD memory_limit = flexval_atolf (TASK_INPUT_PARAM (*__self,
-                                               "MEMORYLIMIT")) * 1024; /* Kb */
-  DWORD time_limit = flexval_atolf (TASK_INPUT_PARAM (*__self,
-                                        "TIMELIMIT")) * USEC_COUNT; /* usecs */
-
-  char full_input[4096],  /* Full input filename */
-       full_output[4096], /* Full output filename */
-       checker_cmd[4096]; /* Command to execute */
 
   /* String with all tests' results */
   char tests_res_pchar[(MAX_ERRCODE + 1) * MAX_TESTS];
 
-  /* Process's descriptor */
-  run_process_info_t *proc = NULL;
-
-  /* Filename to execute */
-  char execfn[4096] = {0};
-
   /* Errors */
-  BOOL RE = FALSE, ML = FALSE, TL = FALSE, WA = FALSE, PE = FALSE, CR = FALSE;
-  /* PChar-ed error for current test */
-  char cur_err_str[MAX_ERRCODE + 1];
-  BOOL acm = !strcmp (TASK_INPUT_PARAM (*__self, "ACM"), "TRUE");
-
-  /* Unpack tests' data */
-  char *tests_pchar = TASK_INPUT_PARAM (*__self, "TESTS"),
-          effective_tests[4096];
-
-  char **tests_pchar_arr = 0;
-
-  /* Points for tests */
-  int tests[MAX_TESTS];
-
-  /* Dummy pchar value */
-  char dummy[1024];
-
-  int compiler_chroot = COMPILER_SAFE_INT_KEY (TASK_COMPILER_ID (*__self),
-                                              "ChRoot", -1);
-
-  /* Get command for solution executing */
-  char *run_solution_cmd = COMPILER_SAFE_PCHAR_KEY (TASK_COMPILER_ID (*__self),
-                                                    "RunSolutionCmd", NULL);
-
-  if (run_solution_cmd && strcmp (run_solution_cmd, ""))
-    {
-      /* We'll make some changes in this string, so we should */
-      /* close this string to make original stored in hive tree */
-      /* for correct freeing */
-      run_solution_cmd = strdup (run_solution_cmd);
-
-      /* String may be enlarged when parameters will be substitued  */
-      run_solution_cmd = realloc (run_solution_cmd, 65535);
-
-      replace_defaults (run_solution_cmd, __cur_testing_dir, __cur_data_dir);
-    }
-
-  /*
-   * TODO: Need to strip dupicated spaces in source string with tests
-   */
-
-  trim (tests_pchar, effective_tests);
-  int tests_count = explode (effective_tests, " ", &tests_pchar_arr);
-
-  /* Per-compiler resource usage correction */
-  double time_corr, rss_corr;
+  BOOL errors[TESTING_RESULT_COUNT];
+  memset(errors, 0, sizeof(errors));
 
   assarr_t *outputs = NULL, *checker_outputs = NULL;
-  char *output = NULL;
 
-  for (i = 0; i < tests_count; i++)
-    {
-      tests[i] = atoi (tests_pchar_arr[i]);
-    }
-
-  /* Free unwanted data */
-  free_explode_data (tests_pchar_arr);
-
-  /* Some more initializations */
-  snprintf (full_input, BUF_SIZE (full_input), "%s/%s",
-            __cur_testing_dir, input_file);
-  snprintf (full_output, BUF_SIZE (full_output), "%s/%s",
-            __cur_testing_dir, output_file);
-
-  strcpy (tests_res_pchar, "");
-
+  testing_task_t task = testing_task_from_wt_task(__self, __cur_data_dir, __cur_testing_dir);
   TASK_LOG (*__self, "----\n");
 
-  /* Get executable file name */
-  INF_PCHAR_KEY (execfn, "FileToExec");
-  strcat (execfn, COMPILER_SAFE_PCHAR_KEY (TASK_COMPILER_ID (*__self),
-                                           "OutputExtension", ""));
-  if (run_solution_cmd)
-    {
-      REPLACE_VAR (run_solution_cmd, "executable", execfn);
-    }
-  else
-    {
-      run_solution_cmd = strdup (execfn);
-    }
-
-  if (compiler_chroot >= 0)
-    {
-      use_chroot = compiler_chroot;
-    }
-
   /* Copying all libs/binaries needed for correct running of solution */
-  if (use_chroot)
-    {
+  if (task.use_chroot)
       copy_chroot_data (__cur_testing_dir);
-    }
-
-  /* Get corrections to apply when executing solution */
-  snprintf (dummy, BUF_SIZE (dummy), "ResourceCorrections/Compilers/%s/Time",
-            TASK_COMPILER_ID (*__self));
-  INF_SAFE_FLOAT_KEY (time_corr, dummy, 0);
-
-  snprintf (dummy, BUF_SIZE (dummy), "ResourceCorrections/Compilers/%s/RSS",
-            TASK_COMPILER_ID (*__self));
-  INF_SAFE_FLOAT_KEY (rss_corr, dummy, 0);
-
-  /* Apply corrections */
-  time_limit += time_corr * USEC_COUNT;
-  memory_limit += rss_corr;
-
-  if (fabs (time_corr) > 1e-8 || fabs (rss_corr) > 1e-8)
-    {
-      INF_DEBUG_LOG ("Using per-compiler corrections: RSS: %lf, time: %lf\n",
-                     rss_corr, time_corr);
-    }
 
   if (need_store_output () && max_output_store_size > 0)
-    {
       outputs = assarr_create ();
-      output = malloc (max_output_store_size + 1);
-    }
 
   if (need_store_checker_output ())
-    {
       checker_outputs = assarr_create ();
-    }
 
   /* Cycle by tests */
   INF_DEBUG_LOG ("Task %ld. Begin cycle by tests\n", __self->sid);
-  for (i = 0; i < tests_count; i++)
+  int i;
+  for (i = 0; i < task.tests_count; i++)
     {
       LOOP_CHECK_ACTIVE;
 
-      /* Some pre-initialization */
-      strcpy (cur_err_str, "OK");
-
-      /* Command to execute checker */
-      build_checker_cmd (__self, __cur_testing_dir, __cur_data_dir,
-                         i + 1, tests_count, checker_cmd);
-
-      /* Copy test file (input file) */
-      INF_DEBUG_LOG ("Task %ld. Copy test\n", __self->sid);
-      if (!copy_test (i + 1, tests_count, __cur_data_dir,
-                      __cur_testing_dir, input_file))
-        {
-          TASK_LOG (*__self, "\n--------\n"
-                             "Fatal error: error copying test file #%d.\n"
-                             "Testing aborted.\n", i + 1);
-          REPORT (__params, "Error copying test #%d.", i + 1);
-          LOOPCRASH;
-        }
-
-      /* Execute solution */
-      SAFE_FREE_PROC (proc);
-      INF_DEBUG_LOG ("Task %ld. Executing solution (cmd: %s)\n",
-                     __self->sid, run_solution_cmd);
-      proc = run_create_process (run_solution_cmd, __cur_testing_dir,
-                                 memory_limit, time_limit);
-
-      /* Set security info */
-      run_set_usergroup (proc, solution_exec_uid, solution_exec_gid);
-      run_set_chroot (proc, use_chroot);
-
-      run_execute_process (proc);
-      run_pwait (proc);
-      INF_DEBUG_LOG ("Task %ld. Finish executing solution\n", __self->sid);
-
-      LOOP_CHECK_ACTIVE;
-
-      if (RUN_PROC_EXEC_ERROR (*proc))
-        {
-          INF_DEBUG_LOG ("Task %ld. "
-                         "Fatal error duting executing solution: %s\n",
-                         __self->sid, RUN_PROC_ERROR_DESC (*proc));
-
-          TASK_LOG (*__self, "\n--------\n"
-                             "Fatal error: error executing solution "
-                             "at test #%d: %s.\nTesting aborted.\n",
-                    i + 1, RUN_PROC_ERROR_DESC (*proc));
-
-          REPORT (__params, "Error executing solution at test #%d: %s.",
-                  i + 1, RUN_PROC_ERROR_DESC (*proc));
-
-          LOOPCRASH;
-        }
-
-      INF_DEBUG_LOG ("Task %ld test #%d: solution exit with exit_code %d, "
-                     "rss_usage %lld and time_usage %lld\n", __self->sid, i,
-                     RUN_PROC_EXITCODE (*proc), RUN_PROC_RSSUSAGE (*proc),
-                     RUN_PROC_TIMEUSAGE (*proc));
-
-      if (RUN_PROC_PIPEBUF (*proc))
-        {
-          INF_DEBUG_LOG ("Pipe from task %ld test #%d: %s\n", __self->sid, i,
-                         RUN_PROC_PIPEBUF (*proc));
-        }
-
-      /* Overview solution's status */
-      if (RUN_PROC_MEMORYLIMIT (*proc))
-        {
-          ERR (ML, "ML")
-        }
-      else if (RUN_PROC_TIMELIMIT (*proc))
-        {
-          ERR (TL, "TL")
-        }
-      else if (PROCESS_RUNTIME_ERROR (*proc))
-        {
-          ERR (RE, "RE")
-        }
-      else
-        {
-          if (!fexists (full_output))
-            {
-              /* No output file. Presentation error. */
-              INF_DEBUG_LOG ("Task %ld. Output file not found after "
-                             "running solution.", __self->sid);
-
-              ERR (PE, "PE");
-            }
-          else
-            {
-              /* Need this here because in case of ACM rules */
-              /* macro ERR() may abort testing cycle */
-              if (outputs)
-                {
-                  FILE *stream = fopen (full_output, "r");
-
-                  snprintf (dummy, BUF_SIZE (dummy), "%d", i);
-
-                  if (stream)
-                    {
-                      size_t len = fread (output, 1,
-                                          max_output_store_size, stream);
-                      output[len] = 0;
-
-                      assarr_set_value (outputs, dummy, strdup (output));
-
-                      fclose (stream);
-                    }
-                }
-
-              /* Exec checker */
-              SAFE_FREE_PROC (proc);
-              INF_DEBUG_LOG ("Task %ld. Executing checker (cmd: %s)\n",
-                             __self->sid, checker_cmd);
-              proc = run_create_process (checker_cmd, __cur_data_dir,
-                                         checker_memory_limit,
-                                         checker_time_limit);
-
-              run_execute_process (proc);
-              run_pwait (proc);
-              INF_DEBUG_LOG ("Task %ld. Finish executing checker\n",
-                             __self->sid);
-
-              LOOP_CHECK_ACTIVE;
-
-              /* Error while trying to execute checker */
-              if (RUN_PROC_EXEC_ERROR (*proc))
-                {
-                  INF_DEBUG_LOG ("Task %ld. "
-                                 "Fatal error duting executing checker: %s\n",
-                                 __self->sid, RUN_PROC_ERROR_DESC (*proc));
-
-                  TASK_LOG (*__self, "\n--------\n"
-                                     "Fatal error: error executing checker "
-                                     "at test #%d: %s.\nTesting aborted.\n",
-                            i + 1, RUN_PROC_ERROR_DESC (*proc));
-
-                  REPORT (__params, "Error executing checker at test #%d: %s.",
-                          i + 1, RUN_PROC_ERROR_DESC (*proc));
-
-                  LOOPCRASH;
-                }
-
-
-              /* Checker finished by signal. */
-              if (RUN_PROC_TERMINATED (*proc))
-                {
-                  TASK_LOG (*__self, "\n--------\n"
-                                     "Fatal error: Abnormal checker "
-                                     "termionation at test #%d. "
-                                     "TERM signal: %d.\nTesting aborted.\n",
-                            i + 1, RUN_PROC_TERMSIG (*proc));
-
-                  REPORT (__params, "Abnormal checker termination at test #%d. "
-                                    "TERM signal: %d.", i + 1,
-                          RUN_PROC_TERMSIG (*proc));
-
-                  LOOPCRASH;
-                }
-
-              INF_DEBUG_LOG ("Task %ld. "
-                             "Checker finished working with exit code %d\n",
-                             __self->sid, RUN_PROC_EXITCODE (*proc));
-
-              /* Resource usage error while executing checker */
-              if (RUN_PROC_MEMORYLIMIT (*proc) || RUN_PROC_TIMELIMIT (*proc))
-                {
-                  INF_DEBUG_LOG ("Task %ld. "
-                                 "Checker's resource usage error (%s)\n",
-                                 __self->sid, ((RUN_PROC_MEMORYLIMIT (*proc)) ?
-                                                   ("Memory limit") :
-                                                   ("Time limit")));
-
-#ifdef __DEBUG
-                  if (RUN_PROC_MEMORYLIMIT (*proc))
-                    {
-                      INF_DEBUG_LOG ("Task %ld. Checker's memory limit was"
-                                     " %lld but %lld was used\n",
-                                     __self->sid, checker_memory_limit,
-                                     RUN_PROC_RSSUSAGE (*proc));
-                    }
-                  else
-                    {
-                      INF_DEBUG_LOG ("Task %ld. Checker's time limit was %lld "
-                                     "but %lld was used\n", __self->sid,
-                                     checker_time_limit,
-                                     RUN_PROC_TIMEUSAGE (*proc));
-                    }
-#endif
-
-                  TASK_LOG (*__self, "\n--------\n"
-                                     "Fatal error: resource limit error while "
-                                     "executing checker.\nTesting aborted.\n");
-                  REPORT (__params, "Resource limit exceeded while executing "
-                                    "checker at test #%d. ",
-                          i + 1);
-
-                  LOOPCRASH;
-                }
-
-              /* Store checker's output message */
-              if (checker_outputs && RUN_PROC_PIPEBUF (*proc))
-                {
-                  snprintf (dummy, BUF_SIZE (dummy), "%d", i);
-
-                  assarr_set_value (checker_outputs, dummy,
-                                    strdup (RUN_PROC_PIPEBUF (*proc)));
-                }
-
-              /* Overview checker's exit code */
-              switch (RUN_PROC_EXITCODE (*proc))
-                {
-                case _OK:
-                  /* Update points for task */
-                  (*__points) += tests[i];
-                  push_string ("OK", " ", tests_res_pchar);
-                  break;
-                case _WA:
-                  ERR (WA, "WA");
-                  break;
-                case _PE:
-                  ERR (PE, "PE");
-                  break;
-                default:
-                  /* Unknown checker's exit code */
-                  TASK_LOG (*__self, "\n--------\nFatal error: checker exited "
-                                     "with unknown code: %d.\nBuffer from "
-                                     "checker: %s\nTesting aborted.\n",
-                            RUN_PROC_EXITCODE (*proc),
-                            RUN_PROC_PIPEBUF (*proc));
-
-                  REPORT (__params, "Checker exited with unknown code: %d\n"
-                                    "Buffer from checker: %s",
-                          i + 1, RUN_PROC_PIPEBUF (*proc));
-
-                  LOOPCRASH;
-                  break;
-                }
-
-              SAFE_FREE_PROC (proc);
-            }
-        }
+      int result = testing_run_test(&task, i, outputs, checker_outputs, __params);
 
       /* Delete input file (to reduce storaging of garbage) and */
       /* correct handling of PE */
-      unlink (full_input);
-      unlink (full_output);
+      unlink (task.full_input);
+      unlink (task.full_output);
 
-      SAFE_FREE_PROC (proc);
+      push_string (testing_result_to_str[result], " ", tests_res_pchar);
 
-      /* Log information about passed test */
-      LOG_TEST;
+      TASK_LOG (*__self, "  Test #%d: %s\n", i+1, testing_result_to_str[result]);
+
+      if (result == TESTING_SC)
+    	  break;
+
+      if (result == TESTING_OK)
+    	  (*__points) += task.tests[i];
+      else
+    	  errors[result] = TRUE;
+
+      if (task.acm && result != TESTING_OK)
+    	  break;
     }
 
   INF_DEBUG_LOG ("Task %ld. Testing mainloop finished\n", __self->sid);
 
 __done_:
-  SAFE_FREE_PROC (proc);
 
-  SAFE_FREE (run_solution_cmd);
-
+  SAFE_FREE (task.run_solution_cmd);
   assarr_set_value (__params, "TESTS", strdup (tests_res_pchar));
 
-  if (use_chroot)
-    {
+  if (task.use_chroot)
       remove_chroot_data (__cur_testing_dir);
-    }
 
   LOOP_DONE_CHECK_ACTIVE;
 
-  if (!CR)
-    {
-      if (RE) push_string ("RE", " ", __errors);
-      if (ML) push_string ("ML", " ", __errors);
-      if (TL) push_string ("TL", " ", __errors);
-      if (WA) push_string ("WA", " ", __errors);
-      if (PE) push_string ("PE", " ", __errors);
+  if (!errors[TESTING_SC]) {
+      if (errors[TESTING_RE]) push_string ("RE", " ", __errors);
+      if (errors[TESTING_ML]) push_string ("ML", " ", __errors);
+      if (errors[TESTING_TL]) push_string ("TL", " ", __errors);
+      if (errors[TESTING_WA]) push_string ("WA", " ", __errors);
+      if (errors[TESTING_PE]) push_string ("PE", " ", __errors);
 
       /* If errors' string is empty, no errors were occured */
       /* in task's testing. So we can set bonus to points. */
       if (!strcmp (__errors, ""))
         {
-          (*__points) += bonus;
+          (*__points) += task.bonus;
           strcpy (__errors, "OK");
         }
-    }
+  } else {
+	  strcpy (__errors, "CR");
+	  (*__points) = 0;
+  }
 
   STORE_OUTPUTS (outputs,         "SOLUTION_OUTPUT");
   STORE_OUTPUTS (checker_outputs, "CHECKER_OUTPUT");
-
-  SAFE_FREE (output);
 }
 
 /**
