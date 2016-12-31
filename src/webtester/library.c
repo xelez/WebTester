@@ -144,8 +144,8 @@ wt_load_single_module (const char *__name, int __id)
   strlowr (fname, fname);
   full = get_full_path (fname);
 
-  core_print (MSG_INFO, "        Loading module %s with id %d...",
-              __name, __id);
+  core_print (MSG_INFO, "        Loading module %s from %s with id %d...",
+              __name, full, __id);
 
   /* Load module as plugin */
   if (plugin_load (full))
