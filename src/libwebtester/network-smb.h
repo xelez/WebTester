@@ -17,7 +17,7 @@
 BEGIN_HEADER
 
 #include <libwebtester/types.h>
-#include <libsmbclient.h>
+#include <samba-4.0/libsmbclient.h>
 
 /* Initialize SAMBA client stuff */
 int

@@ -18,7 +18,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <libsmbclient.h>
+#include <samba-4.0/libsmbclient.h>
 
 #define BUILD_CACHE_KEY(__key, __server, __share) \
   sprintf (__key, "%s@%s", __server, __share)

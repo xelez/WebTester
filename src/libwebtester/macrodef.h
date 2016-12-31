@@ -56,6 +56,7 @@ BEGIN_HEADER
   }
 
 
+#define MSEC_COUNT (1000)
 #define USEC_COUNT (1000*1000)
 #define NSEC_COUNT (1000*1000*1000)
 

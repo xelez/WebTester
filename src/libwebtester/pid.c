@@ -23,7 +23,7 @@ static int openedCount = 0;
 static int
 pid_get_fileno (char *__fn)
 {
-  return open (__fn, O_CREAT);
+  return open (__fn, O_CREAT, 00777);
 }
 
 /**
