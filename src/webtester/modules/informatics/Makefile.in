@@ -9,7 +9,7 @@ include ../../../../mk/init.mk
 OBJECTIVE_LIBS = libinformatics.so
 
 LIBADD = -lm @GLIB_LIBS@ @GTHREAD_LIBS@ 
-CFLAGS += @GLIB_CFLAGS@ @GTHREAD_CFLAGS@ @SOUP_CFLAGS@ @SMBCLIENT_CFLAGS@ -I$(srcdir)/stuff -I../..  
+CFLAGS += @GLIB_CFLAGS@ @GTHREAD_CFLAGS@ @SOUP_CFLAGS@ -I$(srcdir)/stuff -I../..  
 
 SOURCES = \
 	informatics.c \

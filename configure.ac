@@ -249,12 +249,6 @@ else
   AC_MSG_RESULT(no)
 fi
 
-dnl Check for smbclient
-SMBCLIENT_CFLAGS=""
-SMBCLIENT_LIBS="-lsmbclient -ldl"
-AC_SUBST(SMBCLIENT_CFLAGS)
-AC_SUBST(SMBCLIENT_LIBS)
-
 dnl =============================
 dnl Checks for library functions
 dnl =============================
