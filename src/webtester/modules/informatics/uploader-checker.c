@@ -221,7 +221,6 @@ exec_compiler (assarr_t *__params, const char *__cmd, char *__err)
   snprintf(log_path, BUF_SIZE(log_path), "%s/compile.log", dir);
   FILE *compiler_log = fopen(log_path, "r");
   if (compiler_log) {
-	  fprintf(stderr, "log\n");
 	  size_t read_length = fread(compiler_buf, 1, BUF_SIZE(compiler_buf)-1, compiler_log);
 	  fclose(compiler_log);
 	  compiler_buf[read_length] = 0;
@@ -229,8 +228,6 @@ exec_compiler (assarr_t *__params, const char *__cmd, char *__err)
   } else {
 	  assarr_set_value (__params, "COMPILER_MESSAGES", strdup ("Couldn't get compiler message"));
   }
-
-  fprintf(stderr, "WTF\n");
 
   /* Nonzero-coded exit - compilation error */
   if (res != TESTING_OK)
