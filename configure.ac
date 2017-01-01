@@ -371,7 +371,6 @@ src/webtester/modules/informatics/Makefile
 src/webtester/plugins/nullplugin/Makefile
 src/webtester/plugins/pipe/Makefile
 src/webtester/plugins/webinterface/Makefile
-src/webtester/plugins/rundll/Makefile
 src/frontend/Makefile
 ])
 
