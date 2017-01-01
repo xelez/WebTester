@@ -14,7 +14,6 @@
 #include <libwebtester/fs.h>
 #include <libwebtester/hive.h>
 #include <libwebtester/regexp.h>
-#include <libwebtester/network-smb.h>
 #include <libwebtester/strlib.h>
 #include <libwebtester/recode.h>
 
@@ -63,8 +62,6 @@ static BOOL active = TRUE;
     }
 
 #define BUFFER_LENGTH 65536
-
-static BOOL smaba_initialized = FALSE;
 
 static char *required_params[] = {
   "ID",
@@ -123,62 +120,6 @@ send_ipc_request (assarr_t *__params)
   return TRUE;
 }
 
-/****
- * SAMBA's stuff
- */
-
-/**
- * Check should archives be uploaded from SAMBA server
- *
- * @return non-zero if archives should be uploaded from SAMBA, zero otherwise
- */
-static BOOL
-upload_from_samba (void)
-{
-  static int result = -1;
-
-  if (result == -1)
-    {
-      char server[1024];
-      INF_PCHAR_KEY (server, "ProblemUploader/SMB-Server");
-
-      if (strcmp (server, ""))
-        {
-          result = TRUE;
-        }
-      else
-        {
-          result = FALSE;
-        }
-    }
-
-  return result;
-}
-
-/**
- * Initialize SAMBA stuff
- */
-static void
-local_samba_init (void)
-{
-  char server[1024], share[1024], workgroup[1024], login[1024], password[1024];
-
-  if (smaba_initialized) return;
-
-  INF_PCHAR_KEY (server,    "ProblemUploader/SMB-Server");
-  INF_PCHAR_KEY (share,     "ProblemUploader/SMB-Share");
-  INF_PCHAR_KEY (workgroup, "ProblemUploader/SMB-Workgroup");
-  INF_PCHAR_KEY (login,     "ProblemUploader/SMB-Login");
-  INF_PCHAR_KEY (password,  "ProblemUploader/SMB-Password");
-
-  samba_push_auth_data (server, share, workgroup, login, password);
-
-  memset (workgroup, 0, sizeof (workgroup));
-  memset (login, 0, sizeof (login));
-  memset (password, 0, sizeof (password));
-
-  smaba_initialized = TRUE;
-}
 
 /****
  * Main uploading stuff
@@ -210,75 +151,6 @@ create_temporary_dir (const char *__id, char *__full)
 
   fmkdir (informatics_tmp, 00775);
   fmkdir (__full, 00770);
-}
-
-/**
- * Upload archive from remote share to local path using SAMBA
- *
- * @param __fn - name of archive to upload
- * @param __local_path - local path to store archive
- * @return TRUE in success, FALSE otherwise
- */
-static BOOL
-upload_archive_through_samba (const char *__fn, const char *__local_path)
-{
-  static char url_prefix[4096] = {0};
-  char server_fn[4096], local_fn[4096];
-  int fd;
-  FILE *stream;
-  char buf[BUFFER_LENGTH];
-  long len;
-
-  if (!url_prefix[0])
-    {
-      char server[1024], share[1024], problems_root[4096];
-      INF_PCHAR_KEY (server, "ProblemUploader/SMB-Server");
-      INF_PCHAR_KEY (share, "ProblemUploader/SMB-Share");
-      INF_PCHAR_KEY (problems_root, "ProblemUploader/ServerProblemsRoot");
-
-      snprintf (url_prefix, BUF_SIZE (url_prefix),
-                "smb://%s/%s/%s", server, share, problems_root);
-    }
-
-  /* Initialize SAMBA stuff */
-  local_samba_init ();
-
-  snprintf (server_fn, BUF_SIZE (server_fn), "%s/%s", url_prefix, __fn);
-  snprintf (local_fn, BUF_SIZE (local_fn), "%s/%s", __local_path, __fn);
-
-  /* Open file descriptor */
-  fd = samba_fopen (server_fn, O_RDONLY, 0);
-
-  if (fd < 0)
-    {
-      return FALSE;
-    }
-
-  stream = fopen (local_fn, "wb");
-  if (!stream)
-    {
-      samba_fclose (fd);
-      return FALSE;
-    }
-
-  /* Copy-pasting data from remote SAMBA's share to local file */
-  do
-    {
-      len = samba_fread (fd, buf, sizeof (buf));
-      if (len > 0)
-        {
-          fwrite (buf, sizeof (char), len, stream);
-        }
-    }
-  while (len > 0);
-
-  /* Close file descriptor */
-  samba_fclose (fd);
-  fclose (stream);
-
-  samba_unlink (server_fn);
-
-  return TRUE;
 }
 
 /**
@@ -350,14 +222,7 @@ upload_archive_through_localfs (const char *__fn, const char *__local_path)
 static BOOL
 upload_archive (const char *__fn, const char *__local_path)
 {
-  if (upload_from_samba ())
-    {
-      return upload_archive_through_samba (__fn, __local_path);
-    }
-  else
-    {
-      return upload_archive_through_localfs (__fn, __local_path);
-    }
+  return upload_archive_through_localfs (__fn, __local_path);
 }
 
 /**
@@ -1058,16 +923,7 @@ Informatics_UploadProblem (void *__unused, void *__call_unused)
     }
 
   if (g_mutex_trylock (mutex))
-    {
-      if (upload_from_samba () && !samba_initialized ())
-        {
-          /* If uploading should be from SAMBA and */
-          /* SAMBA is not initialized */
-          return 0;
-        }
-
-      thread = g_thread_create (uploading_thread, 0, FALSE, 0);
-    }
+    thread = g_thread_create (uploading_thread, 0, FALSE, 0);
 
   return 0;
 }

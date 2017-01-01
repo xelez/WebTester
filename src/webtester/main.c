@@ -35,7 +35,6 @@
 #include <libwebtester/network-soup.h>
 #include <libwebtester/plugin.h>
 #include <libwebtester/scheduler.h>
-#include <libwebtester/network-smb.h>
 #include <libwebtester/log.h>
 #include <libwebtester/fs.h>
 #include <libwebtester/util.h>
@@ -306,7 +305,6 @@ init_instance (void)
   core_print (MSG_INFO, "    Loading modules...\n");
   wt_load_modules ();
 
-  init_iterator ("Initializing SAMBA stuff", samba_init, "", FALSE);
   init_iterator ("Initializing HTTP stuff", http_init, "", FALSE);
   init_iterator ("Initializing transport stuff", wt_transport_init, "", FALSE);
   init_iterator ("Initializing IPC stuff", wt_ipc_init, "", FALSE);
@@ -337,7 +335,6 @@ close_instance (void)
   close_instance_iterator ("Uninitializing IPC stuff", wt_ipc_done);
   close_instance_iterator ("Uninitializing transport stuff", wt_transport_done);
   close_instance_iterator ("Uninitializing HTTP stuff", http_done);
-  close_instance_iterator ("Uninitializing SAMBA stuff", samba_done);
   close_instance_iterator ("Unloading loaded modules", wt_unload_modules);
 
   plugin_unload_all ();
