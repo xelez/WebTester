@@ -72,8 +72,6 @@ static int saferun(const char *cmd, saferun_params_t *params) {
     strncat(full_cmd, " -- ", FULL_CMD_LEN);
     strncat(full_cmd, cmd, FULL_CMD_LEN);
     
-    fprintf(stderr, "saferun: %s\n", full_cmd);
-    
     FILE *pipe = popen(full_cmd, "r");
     if (!pipe)
         return -1;
