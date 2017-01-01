@@ -32,3 +32,6 @@ debian/*.log
 *.class
 .cproject
 .project
+*.swp
+cscope.out
+.settings
