@@ -8,7 +8,6 @@ nbproject/
 config.h
 config.log
 config.status
-configure
 libtool
 mk/rules.mk
 stamp-h1
