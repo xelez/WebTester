@@ -8,7 +8,7 @@ include ../../../../mk/init.mk
 
 OBJECTIVE_LIBS = libinformatics.so
 
-LIBADD = -L$(srcdir)/librun -lrun -lm @GLIB_LIBS@ @GTHREAD_LIBS@ 
+LIBADD = -lm @GLIB_LIBS@ @GTHREAD_LIBS@ 
 CFLAGS += @GLIB_CFLAGS@ @GTHREAD_CFLAGS@ @SOUP_CFLAGS@ @SMBCLIENT_CFLAGS@ -I$(srcdir)/stuff -I../..  
 
 SOURCES = \

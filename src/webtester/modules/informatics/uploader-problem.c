@@ -9,8 +9,6 @@
  * See the file COPYING.
  */
 
-#include <librun/run.h>
-
 #include <libwebtester/assarr.h>
 #include <libwebtester/conf.h>
 #include <libwebtester/fs.h>

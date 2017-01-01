@@ -22,8 +22,6 @@
 #include <libwebtester/fs.h>
 #include <libwebtester/mutex.h>
 
-#include <librun/run.h>
-
 #include <testlib/testlib.h>
 
 #include <stdlib.h>

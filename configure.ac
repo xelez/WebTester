@@ -358,9 +358,6 @@ webtester.pc
 mk/rules.mk
 src/Makefile
 src/libwebtester/Makefile
-src/librun/Makefile
-src/librun/lrvm/Makefile
-src/librun/kill/Makefile
 src/stuff/testlib/Makefile
 src/stuff/testlib/testlib.pc
 src/stuff/testlib++/Makefile

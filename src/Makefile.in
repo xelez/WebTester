@@ -2,7 +2,7 @@
 include ../mk/rules.mk
 include ../mk/init.mk
 
-SUBDIRS = libwebtester librun stuff webtester
+SUBDIRS = libwebtester stuff webtester
 
 ifeq (@BUILD_GUI@,yes)
 	SUBDIRS += frontend

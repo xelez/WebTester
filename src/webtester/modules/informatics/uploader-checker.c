@@ -13,8 +13,6 @@
 #include <libwebtester/regexp.h>
 #include <libwebtester/fs.h>
 
-#include <librun/run.h>
-
 #include <webtester/transport.h>
 
 #include "informatics.h"
