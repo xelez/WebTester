@@ -215,7 +215,7 @@ exec_compiler (assarr_t *__params, const char *__cmd, char *__err)
       return FALSE;
   }
 
-  /* Save console log */
+  /* Save compiler log */
   char compiler_buf[1024];
   char log_path[1024];
   snprintf(log_path, BUF_SIZE(log_path), "%s/compile.log", dir);
