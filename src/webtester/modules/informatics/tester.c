@@ -138,11 +138,6 @@ static GMutex *unlink_mutex = NULL;
 static char tst_ext[128];
 static char ans_ext[128];
 
-static long solution_exec_uid = -1;
-static long solution_exec_gid = -1;
-static char solution_exec_user[4096] = "";
-static char solution_exec_group[4096] = "";
-
 static BOOL use_chroot = FALSE;
 
 static mutex_t suspended = 0;
@@ -1488,13 +1483,6 @@ read_config (void)
 
   INF_PCHAR_KEY (dummy, "ChRoot");
   use_chroot = is_truth (dummy);
-
-  /* Get security info */
-
-  INF_SAFE_PCHAR_KEY (solution_exec_user, "SolutionExec-User", "");
-  solution_exec_uid = uid_by_name (solution_exec_user);
-  INF_SAFE_PCHAR_KEY (solution_exec_group, "SolutionExec-Group", "");
-  solution_exec_gid = gid_by_name (solution_exec_group);
 
   INF_SAFE_INT_KEY (max_output_store_size, "MaxOutputStoreSize", 0);
 }
