@@ -21,7 +21,6 @@ AC_ARG_ENABLE(logfile,        AC_HELP_STRING([--enable-logfile], [Set the file n
 AC_ARG_ENABLE(debug,          AC_HELP_STRING([--enable-debug],   [Compile debug parts of source]),USER_DEBUG="yes",USER_DEBUG="no")
 AC_ARG_ENABLE(gui,            AC_HELP_STRING([--enable-gui],     [Compile WebTester Server GUI interface (default=no)]),build_gui="yes",build_gui="no")
 AC_ARG_ENABLE(user_debug,     AC_HELP_STRING([--enable-debug],   [Compile debug parts of source]), USER_DEBUG="yes",USER_DEBUG="no")
-AC_ARG_ENABLE(kernel,         AC_HELP_STRING([--enable-kernel],  [Set the release version of kernel to built with]),KERNEL_RELEASE="$enableval",KERNEL_RELEASE=`uname -r`)
 
 dnl make sure we keep ACLOCAL_FLAGS around for maintainer builds to work
 AC_SUBST(ACLOCAL_AMFLAGS, "$ACLOCAL_FLAGS -I m4")
@@ -256,21 +255,6 @@ SMBCLIENT_LIBS="-lsmbclient -ldl"
 AC_SUBST(SMBCLIENT_CFLAGS)
 AC_SUBST(SMBCLIENT_LIBS)
 
-dnl Check for kernel source
-echo -n "Checking for kernel... "
-KERNEL_SOURCE="/lib/modules/${KERNEL_RELEASE}/source"
-if [[ -d ${KERNEL_SOURCE} ]]; then
-  echo "ok."
-else
-  KERNEL_SOURCE="/lib/modules/${KERNEL_RELEASE}/build"
-  if [[ -d ${KERNEL_SOURCE} ]]; then
-    echo "ok."
-  else
-    echo "failed."
-    exit -1;
-  fi
-fi
-
 dnl =============================
 dnl Checks for library functions
 dnl =============================
@@ -338,13 +322,6 @@ AC_DEFINE_UNQUOTED(USER_DEBUG,${user_debug},[Define for user debugging])
 
 AC_DEFINE_UNQUOTED(GETTEXT_PACKAGE,"$GETTEXT_PACKAGE",[Package name for gettext])
 
-# Kernel release
-AC_DEFINE_UNQUOTED(KERNEL_RELEASE, "${KERNEL_RELEASE}", [definition of kernel release])
-AC_DEFINE_UNQUOTED(KERNEL_SOURCE,  "${KERNEL_SOURCE}",  [definition of kernel source dir])
-
-KERNEL_CFLAGS="-I${KERNEL_SOURCE}"
-AC_SUBST(KERNEL_CFLAGS)
-
 PLUGIN_LIBTOOL_FLAGS="-module -avoid-version"
 AC_SUBST(PLUGIN_LIBTOOL_FLAGS)
 
@@ -387,7 +364,6 @@ Configuration for $PACKAGE $VERSION :
   Supervisor PID file ............. : ${super_pidfile}
   Log file ........................ : ${logfile}
   Build WebTester Frontend ........ : ${build_gui}
-  Building for kernel release ..... : ${KERNEL_RELEASE}
 
   Now type 'make' to build $PACKAGE $VERSION,
   and then type 'make install' for installation.

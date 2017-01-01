@@ -48,12 +48,6 @@
 /* definition of HOST */
 #undef HOST
 
-/* definition of kernel release */
-#undef KERNEL_RELEASE
-
-/* definition of kernel source dir */
-#undef KERNEL_SOURCE
-
 /* Major version of libsoup */
 #undef LIBSOUP_22
 
