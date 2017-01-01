@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 WTVG=WT-VERSION-FILE
 DEF_VER=v5.0.3.GIT
