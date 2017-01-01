@@ -118,41 +118,6 @@ do_reload() {
   return 0
 }
 
-#
-# Compilation of LibRUN
-#
-# This function is neccessary because LibRUN should be
-# compiled for current version of kernel, and if you
-# change kernel you should recompile LibRUN.
-# It is the most easy way to do this.
-#
-compile_librun() {
-  cwd=`pwd`
-  log="${PREFIX}/var/log/webtester.setup.log"
-
-  echo "* Started compilation of librun." > ${log}
-
-  cd "${PREFIX}/usr/src/librun"
-  echo "make clean" >> ${log} && make clean && \
-    echo "make HOME_DIRECTORY=\"${PREFIX}\"" >> ${log} && \
-    make HOME_DIRECTORY=\"${PREFIX}\" >> ${log} 2>&1 && \
-    echo "* Compilation successfully completed." >> ${log} && \
-    chmod 0775 "${PREFIX}/usr/src/librun/librun.so" && \
-    chown webtester:webtester "${PREFIX}/usr/src/librun/librun.so" && \
-    chown webtester:webtester "${PREFIX}"/usr/src/librun/*.o;
-
-  res=$?
-
-  cd ${cwd}
-
-  return ${res}
-}
-
-install_librun() {
-  echo "* Installing new librun" >> "${PREFIX}/var/log/webtester.setup.log"
-  cp -f ${PREFIX}/usr/src/librun/librun.so ${PREFIX}/lib
-}
-
 case "$1" in
   start)
   [ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
@@ -203,42 +168,8 @@ case "$1" in
     ;;
   esac
   ;;
-  setup)
-    stopped=false
-
-    mkdir /home/webtester/var/log > /dev/null 2>&1 && \
-      chown webtester:webtester /home/webtester/var/log > /dev/null 2>&1
-
-    log_daemon_msg "Compiling needed libraries"
-    echo -n " librun"
-    compile_librun
-
-    case "$?" in
-      0)
-        log_end_msg 0
-
-        if test -f $PIDFILE; then
-          echo "* Stopping webtester" >> "${PREFIX}/var/log/webtester.setup.log"
-          do_stop
-          stopped=true
-        fi
-
-        install_librun
-
-        if $stopped; then
-          echo "* Staring webtester" >> "${PREFIX}/var/log/webtester.setup.log"
-          do_start
-        fi
-      ;;
-      *)
-        log_end_msg 1
-        echo "See the file ${PREFIX}/var/log/webtester.setup.log for details."
-      ;;
-    esac
-
-  ;;
   *)
-  echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload|setup}" >&2
+  echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2
   exit 3
   ;;
 esac
