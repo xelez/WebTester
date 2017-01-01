@@ -135,9 +135,8 @@ check_permissions (void)
   if (uid < 0 || gid < 0 || ruid != uid || rgid != gid ||
           euid != uid || egid != gid)
     {
-      printf ("This module must be run under user %s:%s.\n",
+      printf ("This module designed to be run under user %s:%s, but trying to continue under current user\n",
               WEBTESTER_USER, WEBTESTER_GROUP);
-      exit (0);
     }
 }
 
