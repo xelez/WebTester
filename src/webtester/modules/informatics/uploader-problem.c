@@ -26,6 +26,7 @@
 
 #include "informatics.h"
 #include "macros.h"
+#include "saferun.h"
 
 #include <memory.h>
 #include <unistd.h>
@@ -456,52 +457,49 @@ static BOOL
 exec_compiler (const char *__compiler_id, const char *__cmd, const char *__dir,
                char *__buf, char *__err_desc)
 {
-  DWORD compiler_ml;
-  DWORD compiler_tl;
-  run_process_info_t *proc;
-  BOOL result = TRUE;
+  saferun_params_t params;
+  params.chroot = NULL;
+  params.dir = __dir;
 
   /* Get compiler's limits */
-  /* Memory limit */
-  compiler_ml = COMPILER_SAFE_INT_KEY (__compiler_id, "Limits/RSS",
+  params.memory_limit = COMPILER_SAFE_INT_KEY (__compiler_id, "Limits/RSS",
                                        INFORMATICS_COMPILER_RSS_LIMIT);
 
-  /* Time limit */
-  compiler_tl = COMPILER_SAFE_FLOAT_KEY (__compiler_id, "Limits/Time",
-                                 INFORMATICS_COMPILER_TIME_LIMIT) * USEC_COUNT;
+  params.time_limit = COMPILER_SAFE_FLOAT_KEY (__compiler_id, "Limits/Time",
+                                 INFORMATICS_COMPILER_TIME_LIMIT) * MSEC_COUNT;
+
+  params.redirect_stdin = NULL;
+  params.redirect_stderr = "stdout";
+  params.redirect_stdout = "compile.log";
 
   /* Create process */
   INF_DEBUG_LOG ("uploader-problem: Executing compiler (cmd: %s)\n", __cmd);
-  proc = run_create_process (__cmd, __dir, compiler_ml, compiler_tl);
-  run_execute_process (proc); /* Execute process and.. */
-  run_pwait (proc); /* ..wait finishing of process */
+  int res = saferun(__cmd, &params);
   INF_DEBUG_LOG ("uploader-problem: Finish executing compiler\n", __cmd);
 
-  if (RUN_PROC_EXEC_ERROR (*proc))
-    {
-      INF_DEBUG_LOG ("uploader-problem: Fatal error executing compiler: %s\n",
-                     __cmd, RUN_PROC_ERROR_DESC (*proc));
-      sprintf (__err_desc, "Fatal error executing compiler: %s",
-               RUN_PROC_ERROR_DESC (*proc));
-      run_free_process (proc);
+  if (res == -1 || res == TESTING_SC) {
+      INF_DEBUG_LOG ("uploader-problem: Fatal error executing compiler\n");
+      sprintf (__err_desc, "Fatal error executing compiler");
       return FALSE;
-    }
+  }
 
-  /* Set output buffer from pipe */
-  if (RUN_PROC_PIPEBUF (*proc))
-    {
-      strcpy (__buf, RUN_PROC_PIPEBUF (*proc));
-    }
+  /* Save compiler log */
+  char compiler_buf[1024];
+  char log_path[1024];
+  snprintf(log_path, BUF_SIZE(log_path), "%s/compile.log", __dir);
+  FILE *compiler_log = fopen(log_path, "r");
+  if (compiler_log) {
+	  size_t read_length = fread(compiler_buf, 1, BUF_SIZE(compiler_buf)-1, compiler_log);
+	  fclose(compiler_log);
+	  compiler_buf[read_length] = 0;
+	  strcpy (__buf, compiler_buf);
+  }
 
   /* Nonzero-coded exit - compilation error */
-  if (PROCESS_RUNTIME_ERROR (*proc))
-    {
-      result = FALSE;
-    }
+  if (res != TESTING_OK)
+	  return FALSE;
 
-  run_free_process (proc);
-
-  return result;
+  return TRUE;
 }
 
 /**
