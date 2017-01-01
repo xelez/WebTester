@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <sys/wait.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,7 +23,7 @@ enum testing_result_t {
 	TESTING_RESULT_COUNT = 8 /**< constant, always max +1 */
 };
 
-char *testing_result_to_str[] = {
+static char *testing_result_to_str[] = {
 		"OK", "RE", "TL", "ML", "SV", "CR", "WA", "PE"
 };
 
@@ -42,7 +43,7 @@ typedef struct saferun_params_t {
     int exit_code;
 } saferun_params_t;
     
-int saferun(const char *cmd, saferun_params_t *params) {
+static int saferun(const char *cmd, saferun_params_t *params) {
     const int FULL_CMD_LEN = 1024; 
     char full_cmd[FULL_CMD_LEN];
     snprintf(full_cmd, FULL_CMD_LEN,
