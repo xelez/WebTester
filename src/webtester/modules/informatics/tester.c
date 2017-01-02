@@ -1014,7 +1014,7 @@ testing_main_loop (wt_task_t *__self, const char *__cur_data_dir,
   INF_DEBUG_LOG ("Task %ld. Enter testing mainloop stuff\n", __self->sid);
 
   /* String with all tests' results */
-  char tests_res_pchar[(MAX_ERRCODE + 1) * MAX_TESTS];
+  char tests_res_pchar[(MAX_ERRCODE + 1) * MAX_TESTS] = "";
 
   /* Errors */
   BOOL errors[TESTING_RESULT_COUNT];
