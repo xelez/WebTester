@@ -114,7 +114,6 @@ banner;
 export ECHO="$PREFIX/stuff/echo.sh"
 export CREATE_GROUP="$PREFIX/stuff/create_group.sh"
 export CREATE_USER="$PREFIX/stuff/create_user.sh"
-export CREATE_SMB_USER="$PREFIX/stuff/create_smb_user.sh"
 export MKDISTDIR="$PREFIX/stuff/mkdistdir.sh "
 export CPFILE="$PREFIX/stuff/cpfile.sh"
 
@@ -132,21 +131,9 @@ fi
 ($DIST_INST && (
   ${ECHO} "Creating required groups and users...";
   ${CREATE_GROUP} webtester;
-  ${CREATE_GROUP} webtester-nobody;
 
   ${CREATE_USER}  webtester        /home/webtester /usr/sbin/nologin \
     webtester true;
-
-  ${CREATE_USER}  webtester-nobody /dev/null /usr/sbin/nologin \
-    webtester-nobody true;
-
-  ${ECHO} "Creating required Samba's users...";
-
-  #
-  # TODO: Replace this password
-  #
-
-  ${CREATE_SMB_USER} webtester assword;
 ))
 
 ${GUI_ONLY} && install_gui && exit 0
@@ -172,22 +159,17 @@ ${MKDISTDIR} /webtester/var/run              webtester webtester 0775
 ${MKDISTDIR} /webtester/usr                  webtester webtester 0775
 ${MKDISTDIR} /webtester/usr/scripts          webtester webtester 0775
 ${MKDISTDIR} /webtester/usr/src              webtester webtester 0775
-${MKDISTDIR} /webtester/usr/src/librun       webtester webtester 0775
 
 # Step 3: Coping files
 ${ECHO} "Installing config files..."
 ${CPFILE} /etc/webtester.conf  /conf/webtester.conf  webtester webtester 0660
 ($DIST_INST && ${CPFILE} /etc/gwebtester.conf \
   /conf/gwebtester.conf webtester webtester 0664)
-${CPFILE} /etc/lrvm.conf       /conf/lrvm.conf       webtester webtester 0640
 ${CPFILE} /etc/users.conf      /conf/users.conf      webtester webtester 0640
 ${CPFILE} /etc/ip_blacklist    /conf/ip_blacklist    webtester webtester 0660
 
 ${ECHO} "Installing binaries..."
 $PREFIX/stuff/install_bins.sh
-
-${ECHO} "Installing system binaries..."
-$PREFIX/stuff/install_sbins.sh
 
 ${ECHO} "Installing libraries..."
 $PREFIX/stuff/install_libs.sh
@@ -247,8 +229,6 @@ ${CPFILE} /src/stuff/Bootstrap/dist/Bootstrap.jar  /var/java/Bootstrap.jar   \
   webtester webtester 0664
 
 ${ECHO} "Copying scripts..."
-${CPFILE} /src/stuff/scripts/lrvm_killall.sh   /sbin/lrvm_killall.sh  \
-  webtester webtester 0750
 
 ${MKDISTDIR} /webtester/usr/scripts/check_all   webtester webtester 0775
 ${CPFILE} /src/stuff/scripts/check_all/check_all.sh    \
@@ -332,15 +312,6 @@ $PREFIX/stuff/install_data.sh
     update-rc.d webtester start 99 2 3 4 5 . stop 01 0 1 6 .;
   fi
 ))
-
-${ECHO} "Installing sources..."
-${CPFILE} /src/librun/*.c /usr/src/librun  webtester webtester 0775
-${CPFILE} /src/librun/*.h /usr/src/librun  webtester webtester 0775
-${CPFILE} /src/stuff/scripts/install/templates/Makefile.librun \
-  /usr/src/librun/Makefile  webtester webtester 0664
-
-${ECHO} "Configuring sudoers file..."
-$PREFIX/stuff/install_sudoers.sh
 
 #
 ${ECHO} "Copying other stuff..."

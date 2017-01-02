@@ -39,9 +39,6 @@ banner;
 $PREFIX/stuff/echo.sh "Uninstalling installed binaries...."
 $PREFIX/stuff/uninstall_bins.sh
 
-$PREFIX/stuff/echo.sh "Uninstalling installed system binaries...."
-$PREFIX/stuff/uninstall_sbins.sh
-
 $PREFIX/stuff/echo.sh "Uninstalling installed libraries...."
 $PREFIX/stuff/uninstall_libs.sh
 
@@ -50,16 +47,9 @@ $PREFIX/stuff/rmdistdir.sh /webtester
 
 # Step 2: Delete unwanted groups and users
 
-$PREFIX/stuff/echo.sh "Deleting unwanted Samba's users..."
-$PREFIX/stuff/delete_smb_user.sh webtester
-
 $PREFIX/stuff/echo.sh "Deleting unwanted groups and users..."
 $PREFIX/stuff/delete_user.sh webtester
-$PREFIX/stuff/delete_user.sh webtester-nobody
 $PREFIX/stuff/delete_group.sh webtester
-$PREFIX/stuff/delete_group.sh webtester-nobody
-
-$PREFIX/stuff/uninstall_sudoers.sh
 
 unlink /etc/init.d/webtester 
 update-rc.d -f webtester remove
